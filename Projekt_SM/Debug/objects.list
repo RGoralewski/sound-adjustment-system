@@ -4,6 +4,7 @@
 "Core/Src/gpio.o"
 "Core/Src/lcd.o"
 "Core/Src/main.o"
+"Core/Src/servo.o"
 "Core/Src/stm32f7xx_hal_msp.o"
 "Core/Src/stm32f7xx_it.o"
 "Core/Src/sys.o"

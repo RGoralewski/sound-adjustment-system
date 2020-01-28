@@ -31,6 +31,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "lcd.h"
+#include "servo.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,11 +51,14 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-int ifDisplay = 0;
 
-//An array for values from the joystick
+
+//An array for values from the potentiometer
 uint32_t potentiometer = 0;
 
+
+int ifDisplay = 0;
+int ifServo=0;
 //Initialize the lcd display
 Lcd_PortType ports[] = {
 	D4_GPIO_Port, D5_GPIO_Port, D6_GPIO_Port, D7_GPIO_Port
@@ -64,16 +68,24 @@ Lcd_PinType pins[] = {D4_Pin, D5_Pin, D6_Pin, D7_Pin};
 
 Lcd_HandleTypeDef my_lcd;
 
+int angle=0;
+servo_t servo1;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	if(htim->Instance == TIM2) { // Jeżeli przerwanie pochodzi od timera 2
-		ifDisplay = 1;
+	if(htim->Instance == TIM3) { //If interrupt comes from timer 3
+		ifServo=1;
+
 	}
+	if(htim->Instance == TIM2) { //If interrupt comes from timer 2
+			ifDisplay = 1;
+		}
 }
 
 /* USER CODE END PFP */
@@ -117,16 +129,21 @@ int main(void)
   MX_USB_OTG_FS_PCD_Init();
   MX_DMA_Init();
   MX_ADC1_Init();
+  MX_TIM1_Init();
   MX_TIM2_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 
-  //Start ADC conversion from the joystick
+  //Start ADC conversion from the potentiometer
   HAL_ADC_Start_DMA(&hadc1, &potentiometer, 1);
 
   //Start tim2 to write data from joystick to the lcd display
   HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim3);
 
   my_lcd = Lcd_create(ports, pins, RS_GPIO_Port, RS_Pin, Enable_GPIO_Port, Enable_Pin, LCD_4_BIT_MODE);
+  //initialize micro servo sg90
+  Servo_Init(&servo1, &htim1, TIM_CHANNEL_4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -140,6 +157,12 @@ int main(void)
 		  Lcd_string(&my_lcd, "Value: ");
 		  Lcd_int(&my_lcd, potentiometer);
 		  ifDisplay = 0;
+	  }
+	  if(ifServo)
+	  {
+		  angle=potentiometer*180/4095;
+		  Servo_SetAngle(&servo1, angle);
+
 	  }
     /* USER CODE END WHILE */
 
