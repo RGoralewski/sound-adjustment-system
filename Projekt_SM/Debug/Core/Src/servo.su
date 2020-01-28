@@ -1,0 +1,4 @@
+servo.c:21:6:Servo_Init	24	static
+servo.c:32:6:map	24	static
+servo.c:40:6:Servo_SetAngle	32	static
+servo.c:52:6:Servo_SetAngleFine	32	static
