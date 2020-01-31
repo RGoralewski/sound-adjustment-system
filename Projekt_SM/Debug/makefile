@@ -37,8 +37,8 @@ Projekt_SM.list \
 all: Projekt_SM.elf secondary-outputs
 
 # Tool invocations
-Projekt_SM.elf: $(OBJS) $(USER_OBJS) C:\Users\Radek\STM32CubeIDE\workspace_1.1.0\Projekt_SM\STM32F746ZGTX_FLASH.ld
-	arm-none-eabi-gcc -o "Projekt_SM.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\Users\Radek\STM32CubeIDE\workspace_1.1.0\Projekt_SM\STM32F746ZGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Projekt_SM.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Projekt_SM.elf: $(OBJS) $(USER_OBJS) C:\Users\Radek\STM32CubeIDE\workspace_1.0.2\Projekt_SM\STM32F746ZGTX_FLASH.ld
+	arm-none-eabi-gcc -o "Projekt_SM.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\Users\Radek\STM32CubeIDE\workspace_1.0.2\Projekt_SM\STM32F746ZGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Projekt_SM.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
