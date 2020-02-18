@@ -21,6 +21,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dac.h"
 #include "dma.h"
 #include "eth.h"
 #include "tim.h"
@@ -32,6 +33,7 @@
 /* USER CODE BEGIN Includes */
 #include "lcd.h"
 #include "servo.h"
+#include "math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,8 +54,17 @@
 
 /* USER CODE BEGIN PV */
 
+//Variables for sinus
+double t = 0;
+double f = 500.0;
+double A = 1.0;
+double A0 = 1.0;
+double y = 0.0;
+#define PI 3.1415926535
+
 //Array for values from the potentiometer (element 0) and sensor (element 1)
-uint16_t adc_values[2];
+uint32_t pot_value;
+uint32_t sensor_value;
 
 //Variable used to handle lcd and servo with callback periods
 int ifDisplay = 0;
@@ -77,14 +88,23 @@ servo_t servo1;
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
+void DAC_SetValue(DAC_HandleTypeDef* hdac, double voltage)
+{
+	int value = voltage * 4095 / 3.3;
+	HAL_DAC_SetValue(hdac, DAC_CHANNEL_2, DAC_ALIGN_12B_R, value);
+}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim->Instance == TIM3) { //If interrupt comes from timer 3
 		ifServo=1;
-
 	}
 	if(htim->Instance == TIM2) { //If interrupt comes from timer 2
 		ifDisplay = 1;
+	}
+	if(htim->Instance == TIM4){ // Jeżeli przerwanie pochodzi od timera 2
+		t += 0.0002;
+		y = A*sin(2*PI*t*f)+A0;
+		DAC_SetValue(&hdac, y);
 	}
 }
 
@@ -133,14 +153,9 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
+  MX_DAC_Init();
+  MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
-
-  //Start PWM signal for buzzer
-  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 63);
-
-  //Start ADC conversion from the potentiometer and sensor
-  HAL_ADC_Start_DMA(&hadc1, adc_values, 2);
 
   //Start tim2 to write data from joystick to the lcd display
   HAL_TIM_Base_Start_IT(&htim2);
@@ -151,6 +166,13 @@ int main(void)
 
   //Initialize micro servo sg90
   Servo_Init(&servo1, &htim1, TIM_CHANNEL_4);
+
+  HAL_DAC_Start(&hdac, DAC_CHANNEL_2);
+  HAL_TIM_Base_Start_IT(&htim4);
+
+  //Start ADC conversion from the potentiometer and sensor
+    HAL_ADC_Start_DMA(&hadc1, &pot_value, 1);
+    HAL_ADC_Start_DMA(&hadc2, &sensor_value, 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -162,17 +184,17 @@ int main(void)
 		  Lcd_string(&my_lcd, "                ");
 		  Lcd_cursor(&my_lcd, 0, 0);
 		  Lcd_string(&my_lcd, "Sens: ");
-		  Lcd_int(&my_lcd, adc_values[1]);
+		  Lcd_int(&my_lcd, sensor_value);
 		  Lcd_cursor(&my_lcd, 1, 0);
 		  Lcd_string(&my_lcd, "                ");
 		  Lcd_cursor(&my_lcd, 1, 0);
 		  Lcd_string(&my_lcd, "Pot: ");
-		  Lcd_int(&my_lcd, adc_values[0]);
+		  Lcd_int(&my_lcd, pot_value);
 		  ifDisplay = 0;
 	  }
 	  if(ifServo)
 	  {
-		  angle = adc_values[0]*180/4095;
+		  angle = pot_value*180/4095;
 		  Servo_SetAngle(&servo1, angle);
 	  }
     /* USER CODE END WHILE */

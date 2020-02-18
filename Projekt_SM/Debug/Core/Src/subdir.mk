@@ -5,6 +5,7 @@
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
 ../Core/Src/adc.c \
+../Core/Src/dac.c \
 ../Core/Src/dma.c \
 ../Core/Src/eth.c \
 ../Core/Src/gpio.c \
@@ -23,6 +24,7 @@ C_SRCS += \
 
 OBJS += \
 ./Core/Src/adc.o \
+./Core/Src/dac.o \
 ./Core/Src/dma.o \
 ./Core/Src/eth.o \
 ./Core/Src/gpio.o \
@@ -41,6 +43,7 @@ OBJS += \
 
 C_DEPS += \
 ./Core/Src/adc.d \
+./Core/Src/dac.d \
 ./Core/Src/dma.d \
 ./Core/Src/eth.d \
 ./Core/Src/gpio.d \
@@ -61,6 +64,8 @@ C_DEPS += \
 # Each subdirectory must supply rules for building sources it contributes
 Core/Src/adc.o: ../Core/Src/adc.c
 	arm-none-eabi-gcc "$<" -mcpu=cortex-m7 -std=gnu11 -g3 -DUSE_HAL_DRIVER -DSTM32F746xx -DDEBUG -c -I../Drivers/CMSIS/Include -I../Drivers/CMSIS/Device/ST/STM32F7xx/Include -I../Core/Inc -I../Drivers/STM32F7xx_HAL_Driver/Inc -I../Drivers/STM32F7xx_HAL_Driver/Inc/Legacy -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -MMD -MP -MF"Core/Src/adc.d" -MT"$@" --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -o "$@"
+Core/Src/dac.o: ../Core/Src/dac.c
+	arm-none-eabi-gcc "$<" -mcpu=cortex-m7 -std=gnu11 -g3 -DUSE_HAL_DRIVER -DSTM32F746xx -DDEBUG -c -I../Drivers/CMSIS/Include -I../Drivers/CMSIS/Device/ST/STM32F7xx/Include -I../Core/Inc -I../Drivers/STM32F7xx_HAL_Driver/Inc -I../Drivers/STM32F7xx_HAL_Driver/Inc/Legacy -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -MMD -MP -MF"Core/Src/dac.d" -MT"$@" --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -o "$@"
 Core/Src/dma.o: ../Core/Src/dma.c
 	arm-none-eabi-gcc "$<" -mcpu=cortex-m7 -std=gnu11 -g3 -DUSE_HAL_DRIVER -DSTM32F746xx -DDEBUG -c -I../Drivers/CMSIS/Include -I../Drivers/CMSIS/Device/ST/STM32F7xx/Include -I../Core/Inc -I../Drivers/STM32F7xx_HAL_Driver/Inc -I../Drivers/STM32F7xx_HAL_Driver/Inc/Legacy -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -MMD -MP -MF"Core/Src/dma.d" -MT"$@" --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -o "$@"
 Core/Src/eth.o: ../Core/Src/eth.c
