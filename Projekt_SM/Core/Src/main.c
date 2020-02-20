@@ -54,17 +54,18 @@
 
 /* USER CODE BEGIN PV */
 
-//Variables for sinus
-double t = 0;
-double f = 500.0;
+//Sinus voltage amplitude and its 100 samples
 double A = 1.0;
-double A0 = 1.0;
-double y = 0.0;
-#define PI 3.1415926535
+uint16_t sine[] = {
+#include "sinus.txt"
+};
+int i = 0;
 
-//Array for values from the potentiometer (element 0) and sensor (element 1)
-uint32_t pot_value;
-uint32_t sensor_value;
+//Array for values from the potentiometer and the sensor
+uint32_t pot_value = 0;
+uint32_t sensor_value = 0;
+uint32_t sensor_read_from_DMA = 0;
+uint32_t pot_read_from_DMA = 0;
 
 //Variable used to handle lcd and servo with callback periods
 int ifDisplay = 0;
@@ -82,30 +83,56 @@ Lcd_HandleTypeDef my_lcd;
 int angle = 0;
 servo_t servo1;
 
+//Variables for UART
+#define MESSAGE_MAX_SIZE 8
+char receivedMessage[MESSAGE_MAX_SIZE] = {0};
+char savedMessage[MESSAGE_MAX_SIZE] = {0};
+char ledColor = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
-void DAC_SetValue(DAC_HandleTypeDef* hdac, double voltage)
+//Scale samples values to set amplitude
+void Set_Sinus_Values()
 {
-	int value = voltage * 4095 / 3.3;
-	HAL_DAC_SetValue(hdac, DAC_CHANNEL_2, DAC_ALIGN_12B_R, value);
+	for(int j = 0; j < 100; j++) {
+		sine[j] = (float)sine[j] * A * 2.0 / 3.3;
+	}
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	if(htim->Instance == TIM3) { //If interrupt comes from timer 3
-		ifServo=1;
-	}
 	if(htim->Instance == TIM2) { //If interrupt comes from timer 2
 		ifDisplay = 1;
 	}
-	if(htim->Instance == TIM4){ // Jeżeli przerwanie pochodzi od timera 2
-		t += 0.0002;
-		y = A*sin(2*PI*t*f)+A0;
-		DAC_SetValue(&hdac, y);
+	if(htim->Instance == TIM3) { //If interrupt comes from timer 3
+		ifServo=1;
 	}
+	if(htim->Instance == TIM4){ //If interrupt comes from timer 4
+		i += 1;
+		if (i>=100) {
+			i = 0;
+		}
+		HAL_DAC_SetValue(&hdac, DAC_CHANNEL_2, DAC_ALIGN_12B_R, sine[i]);
+	}
+	if(htim->Instance == TIM5){ //If interrupt comes from timer 5
+		sensor_value = sensor_read_from_DMA;
+		pot_value = pot_read_from_DMA;
+	}
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	//Save received data
+	for (int i = 0; i < MESSAGE_MAX_SIZE; i++) {
+		savedMessage[i] = receivedMessage[i];
+	}
+	receivedMessage[0] = '\0';
+
+	//Listening again
+	HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedMessage, 7);
 }
 
 /* USER CODE END PFP */
@@ -129,7 +156,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -155,6 +182,8 @@ int main(void)
   MX_TIM4_Init();
   MX_DAC_Init();
   MX_ADC2_Init();
+  MX_TIM5_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
 
   //Start tim2 to write data from joystick to the lcd display
@@ -167,12 +196,20 @@ int main(void)
   //Initialize micro servo sg90
   Servo_Init(&servo1, &htim1, TIM_CHANNEL_4);
 
+  //Sinus
+  Set_Sinus_Values();
   HAL_DAC_Start(&hdac, DAC_CHANNEL_2);
   HAL_TIM_Base_Start_IT(&htim4);
 
+  //Interrupts for DMA adc2
+  HAL_TIM_Base_Start_IT(&htim5);
+
   //Start ADC conversion from the potentiometer and sensor
-    HAL_ADC_Start_DMA(&hadc1, &pot_value, 1);
-    HAL_ADC_Start_DMA(&hadc2, &sensor_value, 1);
+  HAL_ADC_Start_DMA(&hadc1, &pot_read_from_DMA, 1);
+  HAL_ADC_Start_DMA(&hadc2, &sensor_read_from_DMA, 1);
+
+  //UART listening
+  HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedMessage, 7);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -194,8 +231,34 @@ int main(void)
 	  }
 	  if(ifServo)
 	  {
-		  angle = pot_value*180/4095;
+		  angle = pot_value * 180 / 4095;
 		  Servo_SetAngle(&servo1, angle);
+	  }
+
+	  //LEDs' control by UART
+	  if (!strcmp(savedMessage, "LD_R_ON") || !strcmp(savedMessage, "LD_G_ON") || !strcmp(savedMessage, "LD_B_ON")) {
+		  sscanf((char*)savedMessage, "LD_%c_ON ", &ledColor);
+		  switch(ledColor) {
+		  case 'G':
+			  HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+		  case 'B':
+			  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+		  case 'R':
+			  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+		  }
+		  savedMessage[0] = '\0';
+	  }
+	  else if (!strcmp(savedMessage, "LD_R_OFF") || !strcmp(savedMessage, "LD_G_OFF") || !strcmp(savedMessage, "LD_B_OFF")) {
+		  sscanf((char*)savedMessage, "LD_%c_OFF", &ledColor);
+		  switch(ledColor) {
+		  case 'G':
+		  	HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+		  case 'B':
+		  	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+		  case 'R':
+		  	HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+		  }
+		  savedMessage[0] = '\0';
 	  }
     /* USER CODE END WHILE */
 
@@ -248,8 +311,10 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART3|RCC_PERIPHCLK_CLK48;
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART3|RCC_PERIPHCLK_USART6
+                              |RCC_PERIPHCLK_CLK48;
   PeriphClkInitStruct.Usart3ClockSelection = RCC_USART3CLKSOURCE_PCLK1;
+  PeriphClkInitStruct.Usart6ClockSelection = RCC_USART6CLKSOURCE_PCLK2;
   PeriphClkInitStruct.Clk48ClockSelection = RCC_CLK48SOURCE_PLL;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
