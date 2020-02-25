@@ -1,4 +1,6 @@
 "Core/Src/adc.o"
+"Core/Src/arm_pid_init_f32.o"
+"Core/Src/arm_pid_init_q31.o"
 "Core/Src/dac.o"
 "Core/Src/dma.o"
 "Core/Src/eth.o"

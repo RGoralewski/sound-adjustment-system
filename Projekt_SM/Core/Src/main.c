@@ -34,6 +34,7 @@
 #include "lcd.h"
 #include "servo.h"
 #include "math.h"
+#include "arm_math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -76,7 +77,6 @@ int calculateRMS = 0;
 
 //Variable used to handle lcd and servo with callback periods
 int ifDisplay = 0;
-int ifServo = 0;
 
 //Initialize the lcd display
 Lcd_PortType ports[] = {
@@ -88,15 +88,27 @@ Lcd_HandleTypeDef my_lcd;
 
 //Variables for the servo
 int angle = 0;
+int angle_correction = 0;
 servo_t servo1;
 
 //Variables for UART
-#define MESSAGE_MAX_SIZE 8
+#define MESSAGE_MAX_SIZE 3
 char receivedMessage[MESSAGE_MAX_SIZE] = {0};
 char savedMessage[MESSAGE_MAX_SIZE] = {0};
-char ledColor = 0;
 int ifUART = 0;
 int UART_status = 0;
+int setpoint_read_from_UART = 0;
+
+//PID parameters
+#define PID_PARAM_KP        1.0          /* Proporcional */
+#define PID_PARAM_KI        0        /* Integral */
+#define PID_PARAM_KD        10.0          /* Derivative */
+
+//Setpoint
+uint32_t sensor_setpoint = 0;
+
+//Flag to calculate PID
+int ifPID = 0;
 
 /* USER CODE END PV */
 
@@ -117,7 +129,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		ifDisplay = 1;
 	}
 	if(htim->Instance == TIM3) { //If interrupt comes from timer 3
-		ifServo=1;
+		ifPID=1;
 	}
 	if(htim->Instance == TIM4){ //If interrupt comes from timer 4
 		//HAL_GPIO_WritePin(_GPIO_Port, _Pin, GPIO_PIN_SET);
@@ -129,7 +141,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		//HAL_GPIO_WritePin(_GPIO_Port, _Pin, GPIO_PIN_RESET);
 	}
 	if(htim->Instance == TIM5){ //If interrupt comes from timer 5
+		int previous_pot = pot_value;
 		pot_value = pot_read_from_DMA;
+		if (pot_value > previous_pot + 100 || pot_value < previous_pot - 100) {
+			sensor_setpoint = pot_value * 250 / 4095 + 100;
+		}
 	}
 	if(htim->Instance == TIM6){ //If interrupt comes from timer 6
 		if(current_sample < BUFFER_SIZE) {
@@ -145,17 +161,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	//Listening again
-	UART_status = HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedMessage, 7);
+	UART_status = HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedMessage, 3);
 
+	/*
 	//Save received data
 	for (int i = 0; i < MESSAGE_MAX_SIZE; i++) {
 		savedMessage[i] = receivedMessage[i];
 	}
 	receivedMessage[0] = '\0';
+	*/
 
-	//Set flag to action
-	ifUART = 1;
+	sscanf((char*)receivedMessage, "%d", &setpoint_read_from_UART);
+	receivedMessage[0] = '\0';
 
+	if (setpoint_read_from_UART >= 100 && setpoint_read_from_UART <= 350) {
+		sensor_setpoint = setpoint_read_from_UART;
+	}
 }
 
 /* USER CODE END PFP */
@@ -236,7 +257,24 @@ int main(void)
   HAL_ADC_Start_DMA(&hadc2, &sensor_read_from_DMA, 1);
 
   //UART listening
-  UART_status = HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedMessage, 7);
+  UART_status = HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedMessage, 3);
+
+
+  //PID error
+  int pid_error;
+
+  /* ARM PID Instance */
+  arm_pid_instance_q31 PID;
+
+  /* Set PID parameters */
+  /* Set this for your needs */
+  PID.Kp = PID_PARAM_KP;        /* Proporcional */
+  PID.Ki = PID_PARAM_KI;        /* Integral */
+  PID.Kd = PID_PARAM_KD;        /* Derivative */
+
+  /* Initialize PID system */
+  arm_pid_init_q31(&PID, 1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -247,19 +285,14 @@ int main(void)
 		  Lcd_cursor(&my_lcd, 0, 0);
 		  Lcd_string(&my_lcd, "                ");
 		  Lcd_cursor(&my_lcd, 0, 0);
-		  Lcd_string(&my_lcd, "Sens: ");
+		  Lcd_string(&my_lcd, "Sensor: ");
 		  Lcd_int(&my_lcd, sensor_RMS);
 		  Lcd_cursor(&my_lcd, 1, 0);
 		  Lcd_string(&my_lcd, "                ");
 		  Lcd_cursor(&my_lcd, 1, 0);
-		  Lcd_string(&my_lcd, "Pot: ");
-		  Lcd_int(&my_lcd, pot_value);
+		  Lcd_string(&my_lcd, "Setpoint: ");
+		  Lcd_int(&my_lcd, sensor_setpoint);
 		  ifDisplay = 0;
-	  }
-	  if(ifServo)
-	  {
-		  angle = pot_value * 150 / 4095 + 30;
-		  Servo_SetAngle(&servo1, angle);
 	  }
 	  if(calculateRMS) {
 			int squares_sum = 0;
@@ -272,34 +305,70 @@ int main(void)
 	  }
 
 	  //LEDs' control by UART
+	  /*
 	  if(ifUART) {
 		  if (!strcmp(savedMessage, "LD_R_ON") || !strcmp(savedMessage, "LD_G_ON") || !strcmp(savedMessage, "LD_B_ON")) {
 			  sscanf((char*)savedMessage, "LD_%c_ON ", &ledColor);
 			  switch(ledColor) {
 			  case 'G':
 				  HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+				  break;
 			  case 'B':
 				  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+				  break;
 			  case 'R':
 				  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+				  break;
 			  }
 			  savedMessage[0] = '\0';
 		  }
-		  else if (!strcmp(savedMessage, "LD_R_OFF") || !strcmp(savedMessage, "LD_G_OFF") || !strcmp(savedMessage, "LD_B_OFF")) {
-			  sscanf((char*)savedMessage, "LD_%c_OFF", &ledColor);
+		  else if (!strcmp(savedMessage, "LD_R_OF") || !strcmp(savedMessage, "LD_G_OF") || !strcmp(savedMessage, "LD_B_OF")) {
+			  sscanf((char*)savedMessage, "LD_%c_OF", &ledColor);
 			  switch(ledColor) {
 			  case 'G':
 				HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
+				break;
 			  case 'B':
 				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+				break;
 			  case 'R':
 				HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+				break;
 			  }
 			  savedMessage[0] = '\0';
 		  }
 
 		  ifUART = 0;
 	  }
+	  */
+
+	  if(ifPID)
+	  {
+		  //PID control
+		  /* Calculate error */
+		  pid_error = sensor_setpoint - sensor_RMS;
+
+		  /* Calculate PID here, argument is error */
+		 angle_correction = arm_pid_q31(&PID, pid_error);
+		 if(angle_correction < -5) {
+			 angle_correction = -5;
+		 }
+		 if(pid_error > 0) {
+			 angle_correction *= -1;
+		 }
+		 angle = angle + angle_correction;
+
+		  if (angle < 5) {
+			  angle = 5;
+		  }
+		  else if (angle > 175) {
+			  angle = 175;
+		  }
+
+		  Servo_SetAngle(&servo1, angle);
+		  ifPID = 0;
+	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

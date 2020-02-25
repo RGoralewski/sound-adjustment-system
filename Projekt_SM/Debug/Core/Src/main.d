@@ -40,7 +40,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Core/Inc/adc.h ../Core/Inc/main.h ../Core/Inc/dac.h ../Core/Inc/dma.h \
  ../Core/Inc/eth.h ../Core/Inc/tim.h ../Core/Inc/usart.h \
  ../Core/Inc/usb_otg.h ../Core/Inc/gpio.h ../Core/Inc/lcd.h \
- ../Core/Inc/servo.h ../Core/Src/sinus.txt
+ ../Core/Inc/servo.h ../Core/Inc/arm_math.h ../Core/Src/sinus.txt
 
 ../Core/Inc/main.h:
 
@@ -141,5 +141,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/lcd.h:
 
 ../Core/Inc/servo.h:
+
+../Core/Inc/arm_math.h:
 
 ../Core/Src/sinus.txt:
