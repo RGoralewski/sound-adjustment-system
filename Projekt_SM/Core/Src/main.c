@@ -65,11 +65,12 @@ int i = 0;
 //Potentiometer
 uint32_t pot_value = 0;
 uint32_t pot_read_from_DMA = 0;
+uint32_t last_changed_pot = 0;
 
 //Sensor
 uint32_t sensor_RMS = 0;
-const int BUFFER_SIZE = 100;
-uint32_t sensor_values_buffer[100];
+const int BUFFER_SIZE = 1000;
+uint32_t sensor_values_buffer[1000];
 int current_sample = 0;
 uint32_t sensor_read_from_DMA = 0;
 int calculateRMS = 0;
@@ -94,15 +95,17 @@ servo_t servo1;
 //Variables for UART
 #define MESSAGE_MAX_SIZE 3
 char receivedMessage[MESSAGE_MAX_SIZE] = {0};
-char savedMessage[MESSAGE_MAX_SIZE] = {0};
 int ifUART = 0;
-int UART_status = 0;
+HAL_StatusTypeDef UART_status;
 int setpoint_read_from_UART = 0;
+#define T_MESSAGE_MAX_SIZE 10
+uint8_t messageToSend[T_MESSAGE_MAX_SIZE] = {0};
+int ifTransmitUART = 0;
 
 //PID parameters
-#define PID_PARAM_KP        1.0          /* Proporcional */
-#define PID_PARAM_KI        0        /* Integral */
-#define PID_PARAM_KD        10.0          /* Derivative */
+#define PID_PARAM_KP        0.1          /* Proporcional */
+#define PID_PARAM_KI        0            /* Integral */
+#define PID_PARAM_KD        0.005         /* Derivative */
 
 //Setpoint
 uint32_t sensor_setpoint = 0;
@@ -116,6 +119,21 @@ int ifPID = 0;
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
+//Display values function
+void Display_Values(Lcd_HandleTypeDef * lcd)
+{
+	  Lcd_cursor(lcd, 0, 0);
+	  Lcd_string(lcd, "                ");
+	  Lcd_cursor(lcd, 0, 0);
+	  Lcd_string(lcd, "Current: ");
+	  Lcd_int(lcd, sensor_RMS);
+	  Lcd_cursor(lcd, 1, 0);
+	  Lcd_string(lcd, "                ");
+	  Lcd_cursor(lcd, 1, 0);
+	  Lcd_string(lcd, "Setpoint: ");
+	  Lcd_int(lcd, sensor_setpoint);
+}
+
 //Scale samples values to set amplitude
 void Set_Sinus_Values()
 {
@@ -127,6 +145,7 @@ void Set_Sinus_Values()
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim->Instance == TIM2) { //If interrupt comes from timer 2
 		ifDisplay = 1;
+		ifTransmitUART = 1;
 	}
 	if(htim->Instance == TIM3) { //If interrupt comes from timer 3
 		ifPID=1;
@@ -141,14 +160,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		//HAL_GPIO_WritePin(_GPIO_Port, _Pin, GPIO_PIN_RESET);
 	}
 	if(htim->Instance == TIM5){ //If interrupt comes from timer 5
-		int previous_pot = pot_value;
 		pot_value = pot_read_from_DMA;
-		if (pot_value > previous_pot + 100 || pot_value < previous_pot - 100) {
-			sensor_setpoint = pot_value * 250 / 4095 + 100;
+		if (pot_value > last_changed_pot + 100 || pot_value < last_changed_pot - 100) {
+			sensor_setpoint = pot_value * 240 / 4095 + 110;
+			last_changed_pot = pot_value;
 		}
 	}
 	if(htim->Instance == TIM6){ //If interrupt comes from timer 6
 		if(current_sample < BUFFER_SIZE) {
+			//Write sample to the buffer with offset cutting
 			sensor_values_buffer[current_sample] = sensor_read_from_DMA;
 			current_sample++;
 		}
@@ -162,14 +182,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	//Listening again
 	UART_status = HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedMessage, 3);
-
-	/*
-	//Save received data
-	for (int i = 0; i < MESSAGE_MAX_SIZE; i++) {
-		savedMessage[i] = receivedMessage[i];
-	}
-	receivedMessage[0] = '\0';
-	*/
 
 	sscanf((char*)receivedMessage, "%d", &setpoint_read_from_UART);
 	receivedMessage[0] = '\0';
@@ -264,7 +276,7 @@ int main(void)
   int pid_error;
 
   /* ARM PID Instance */
-  arm_pid_instance_q31 PID;
+  arm_pid_instance_f32 PID;
 
   /* Set PID parameters */
   /* Set this for your needs */
@@ -273,7 +285,7 @@ int main(void)
   PID.Kd = PID_PARAM_KD;        /* Derivative */
 
   /* Initialize PID system */
-  arm_pid_init_q31(&PID, 1);
+  arm_pid_init_f32(&PID, 1);
 
   /* USER CODE END 2 */
 
@@ -282,65 +294,25 @@ int main(void)
   while (1)
   {
 	  if(ifDisplay == 1) {
-		  Lcd_cursor(&my_lcd, 0, 0);
-		  Lcd_string(&my_lcd, "                ");
-		  Lcd_cursor(&my_lcd, 0, 0);
-		  Lcd_string(&my_lcd, "Sensor: ");
-		  Lcd_int(&my_lcd, sensor_RMS);
-		  Lcd_cursor(&my_lcd, 1, 0);
-		  Lcd_string(&my_lcd, "                ");
-		  Lcd_cursor(&my_lcd, 1, 0);
-		  Lcd_string(&my_lcd, "Setpoint: ");
-		  Lcd_int(&my_lcd, sensor_setpoint);
+		  Display_Values(&my_lcd);
 		  ifDisplay = 0;
 	  }
+
 	  if(calculateRMS) {
 			int squares_sum = 0;
 			for (int i = 0; i < BUFFER_SIZE; i++) {
 				squares_sum += pow(sensor_values_buffer[i], 2);
 			}
-			sensor_RMS = sqrt(squares_sum / 100.0);
+			sensor_RMS = sqrt(squares_sum / 1000.0);
 			current_sample = 0;
 			calculateRMS = 0;
 	  }
 
-	  //LEDs' control by UART
-	  /*
-	  if(ifUART) {
-		  if (!strcmp(savedMessage, "LD_R_ON") || !strcmp(savedMessage, "LD_G_ON") || !strcmp(savedMessage, "LD_B_ON")) {
-			  sscanf((char*)savedMessage, "LD_%c_ON ", &ledColor);
-			  switch(ledColor) {
-			  case 'G':
-				  HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
-				  break;
-			  case 'B':
-				  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-				  break;
-			  case 'R':
-				  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-				  break;
-			  }
-			  savedMessage[0] = '\0';
-		  }
-		  else if (!strcmp(savedMessage, "LD_R_OF") || !strcmp(savedMessage, "LD_G_OF") || !strcmp(savedMessage, "LD_B_OF")) {
-			  sscanf((char*)savedMessage, "LD_%c_OF", &ledColor);
-			  switch(ledColor) {
-			  case 'G':
-				HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
-				break;
-			  case 'B':
-				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-				break;
-			  case 'R':
-				HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-				break;
-			  }
-			  savedMessage[0] = '\0';
-		  }
-
-		  ifUART = 0;
+	  if(ifTransmitUART)
+	  {
+		  sprintf(messageToSend, "%d %d \n", sensor_RMS, sensor_setpoint);
+		  HAL_UART_Transmit_IT(&huart6, messageToSend, strlen(messageToSend));
 	  }
-	  */
 
 	  if(ifPID)
 	  {
@@ -349,13 +321,12 @@ int main(void)
 		  pid_error = sensor_setpoint - sensor_RMS;
 
 		  /* Calculate PID here, argument is error */
-		 angle_correction = arm_pid_q31(&PID, pid_error);
+		 angle_correction = arm_pid_f32(&PID, pid_error);
+		 /*
 		 if(angle_correction < -5) {
 			 angle_correction = -5;
 		 }
-		 if(pid_error > 0) {
-			 angle_correction *= -1;
-		 }
+		 */
 		 angle = angle + angle_correction;
 
 		  if (angle < 5) {

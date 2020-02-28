@@ -3232,7 +3232,6 @@ void HAL_TIM_IRQHandler(TIM_HandleTypeDef *htim)
     }
   }
   /* Capture compare 3 event */
-
   if (__HAL_TIM_GET_FLAG(htim, TIM_FLAG_CC3) != RESET)
   {
     if (__HAL_TIM_GET_IT_SOURCE(htim, TIM_IT_CC3) != RESET)
@@ -3332,6 +3331,7 @@ void HAL_TIM_IRQHandler(TIM_HandleTypeDef *htim)
     }
   }
   /* TIM Trigger detection event */
+
   if (__HAL_TIM_GET_FLAG(htim, TIM_FLAG_TRIGGER) != RESET)
   {
     if (__HAL_TIM_GET_IT_SOURCE(htim, TIM_IT_TRIGGER) != RESET)
